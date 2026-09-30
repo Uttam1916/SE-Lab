@@ -1,4 +1,5 @@
 import random
+
 import pygame
 
 WIDTH, HEIGHT = 800, 600
@@ -9,17 +10,33 @@ AMMO_PER_BATTERY = 10
 
 def explosion_color(progress):
     """Return an (r, g, b) colour for an explosion (progress 0..1 of its life), or None for the default."""
-    pass
+    progress = max(0.0, min(1.0, progress))
+    if progress < 0.25:
+        t = progress / 0.25
+        return (255, 255, int(255 * (1.0 - t) + 70 * t))
+    elif progress < 0.65:
+        t = (progress - 0.25) / 0.40
+        return (255, int(255 * (1.0 - t) + 110 * t), int(70 * (1.0 - t) + 15 * t))
+    else:
+        t = (progress - 0.65) / 0.35
+        return (int(255 * (1.0 - t) + 140 * t), int(110 * (1.0 - t) + 20 * t), 15)
+
+
+# Alert states for city destruction
+city_alert_timer = 0.0
+city_alert_text = ""
 
 
 def on_city_destroyed(city):
     """Called when a city is hit; add screen shake, sounds, or a game-over warning here."""
-    pass
+    global city_alert_timer, city_alert_text
+    city_alert_timer = 1.2  # Show alert & red flash for 1.2 seconds
+    city_alert_text = f"WARNING: CITY AT X={int(city.pos.x)} DESTROYED!"
 
 
 def city_repair_threshold():
     """Return a score value at which a destroyed city is rebuilt, or None to disable city repair."""
-    pass
+    return 2000
 
 
 class Battery:
@@ -102,19 +119,24 @@ class Game:
             battery.alive, battery.ammo = True, AMMO_PER_BATTERY
 
     def nearest_battery(self, target):
-        return min(self.batteries, key=lambda b: b.pos.distance_squared_to(target))
+        available = [b for b in self.batteries if b.alive and b.ammo > 0]
+        if not available:
+            return None
+        return min(available, key=lambda b: b.pos.distance_squared_to(target))
 
     def launch(self, target):
         target = pygame.Vector2(target)
         if self.state != "play" or target.y > GROUND_Y - 20:
             return
         battery = self.nearest_battery(target)
-        if battery.alive and battery.ammo > 0:
+        if battery:
             battery.ammo -= 1
             self.interceptors.append(Interceptor(battery.pos, target))
 
     def spawn_missile(self):
-        targets = [c for c in self.cities if c.alive] + [b for b in self.batteries if b.alive]
+        targets = [c for c in self.cities if c.alive] + [
+            b for b in self.batteries if b.alive
+        ]
         if targets:
             self.missiles.append(Missile(random.choice(targets), 45 + self.wave * 6))
 
@@ -140,7 +162,7 @@ class Game:
         for explosion in self.explosions:
             explosion.age += dt
             for missile in self.missiles[:]:
-                if missile.pos.distance_squared_to(explosion.pos) < explosion.radius ** 2:
+                if missile.pos.distance_squared_to(explosion.pos) < explosion.radius**2:
                     self.missiles.remove(missile)
                     self.score += 25
         self.explosions = [e for e in self.explosions if not e.done]
@@ -162,34 +184,58 @@ class Game:
             self.state = "lose"
 
     def finish_wave(self):
-        self.score += 100 * sum(c.alive for c in self.cities) + 5 * sum(b.ammo for b in self.batteries)
+        self.score += 100 * sum(c.alive for c in self.cities) + 5 * sum(
+            b.ammo for b in self.batteries
+        )
         self.wave += 1
         self.start_wave()
 
     def draw(self, screen):
         screen.fill((5, 5, 25))
-        pygame.draw.rect(screen, (150, 110, 50), (0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y))
+        pygame.draw.rect(
+            screen, (150, 110, 50), (0, GROUND_Y, WIDTH, HEIGHT - GROUND_Y)
+        )
         for city in self.cities:
             if city.alive:
                 for i, h in enumerate((18, 28, 22)):
-                    pygame.draw.rect(screen, (90, 190, 230), (city.pos.x - 18 + i * 12, GROUND_Y - h, 10, h))
+                    pygame.draw.rect(
+                        screen,
+                        (90, 190, 230),
+                        (city.pos.x - 18 + i * 12, GROUND_Y - h, 10, h),
+                    )
         for battery in self.batteries:
             if battery.alive:
                 x = battery.pos.x
-                pygame.draw.polygon(screen, (220, 220, 80), [(x - 22, GROUND_Y), (x + 22, GROUND_Y), (x, GROUND_Y - 24)])
+                pygame.draw.polygon(
+                    screen,
+                    (220, 220, 80),
+                    [(x - 22, GROUND_Y), (x + 22, GROUND_Y), (x, GROUND_Y - 24)],
+                )
                 label = self.font.render(str(battery.ammo), True, (20, 20, 20))
                 screen.blit(label, label.get_rect(center=(x, GROUND_Y + 14)))
         for missile in self.missiles:
             pygame.draw.line(screen, (200, 60, 60), missile.origin, missile.pos, 1)
             pygame.draw.circle(screen, (255, 255, 255), missile.pos, 3)
         for interceptor in self.interceptors:
-            pygame.draw.line(screen, (80, 180, 255), interceptor.origin, interceptor.pos, 1)
+            pygame.draw.line(
+                screen, (80, 180, 255), interceptor.origin, interceptor.pos, 1
+            )
             pygame.draw.circle(screen, (80, 180, 255), interceptor.target, 5, 1)
         for explosion in self.explosions:
             fade = 1 - explosion.progress * 0.5
-            color = explosion_color(explosion.progress) or (int(255 * fade), int(200 * fade), 60)
-            pygame.draw.circle(screen, color, explosion.pos, max(1, int(explosion.radius)))
-        hud = self.font.render(f"Score {self.score}   Wave {self.wave}   Click to fire   R = reset", True, (240, 240, 240))
+            color = explosion_color(explosion.progress) or (
+                int(255 * fade),
+                int(200 * fade),
+                60,
+            )
+            pygame.draw.circle(
+                screen, color, explosion.pos, max(1, int(explosion.radius))
+            )
+        hud = self.font.render(
+            f"Score {self.score}   Wave {self.wave}   Click to fire   R = reset",
+            True,
+            (240, 240, 240),
+        )
         screen.blit(hud, (10, 8))
         if self.state == "lose":
             label = self.font.render("ALL CITIES LOST - Press R", True, (255, 255, 120))
