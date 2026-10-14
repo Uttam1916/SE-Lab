@@ -1,18 +1,22 @@
+"""Movie reviews module."""
+
 import hashlib
 import os
 import secrets
 
-stream_host = "127.0.0.1"
-stream_port = 8000
-moderator_password = os.getenv("MODERATOR_PASSWORD", "reviews-demo")
+STREAM_HOST = "127.0.0.1"
+STREAM_PORT = 8000
+MODERATOR_PASSWORD = os.getenv("MODERATOR_PASSWORD", "reviews-demo")
 movies = {}
 
 
 def add_movie(title, genre, year):
+    """Add a movie to the collection."""
     movies[title] = {"genre": genre, "year": year, "ratings": [], "reviews": []}
 
 
 def rate_movie(title, stars, review_text=""):
+    """Rate a movie and optionally add a review."""
     if stars < 1 or stars > 5:
         print("Rating must be between 1 and 5, got", stars)
         return False
@@ -23,38 +27,44 @@ def rate_movie(title, stars, review_text=""):
 
 
 def average_rating(title):
+    """Calculate the average rating for a movie."""
     ratings = movies[title]["ratings"]
     if ratings:
         return round(sum(ratings) / len(ratings), 1)
-    else:
-        return 0.0
+    return 0.0
 
 
 def top_movies(count=2):
+    """Return the top rated movies."""
     ranked = sorted(movies, key=average_rating, reverse=True)
     return ranked[:count]
 
 
 def pick_featured():
+    """Pick a random featured movie."""
     return secrets.choice(sorted(movies))
 
 
 def review_id(title, review_text):
+    """Generate a short review ID."""
     data = (title + review_text).encode()
     return hashlib.sha256(data).hexdigest()[:10]
 
 
 def print_all_reviews():
+    """Print all movies and their average ratings."""
     titles = list(movies)
-    for i in range(len(titles)):
-        print(i + 1, titles[i], average_rating(titles[i]))
+    for i, title in enumerate(titles):
+        print(i + 1, title, average_rating(title))
 
 
 def stream_address():
-    return stream_host + ":" + str(stream_port)
+    """Return the stream address."""
+    return STREAM_HOST + ":" + str(STREAM_PORT)
 
 
 def main():
+    """Run main demo."""
     add_movie("The Long Road", "Drama", 2021)
     add_movie("Laugh Track", "Comedy", 2019)
     add_movie("Star Drift", "Sci-Fi", 2023)
